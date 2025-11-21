@@ -1,6 +1,6 @@
 #=============================================================================
 # 고객 이탈 예측 : 의사결정나무(트리) 모델
-# 수정: 25-11-19 23:30
+# 수정: 25-11-21 02:30
 #=============================================================================
 library(caret)
 library(dplyr)
@@ -14,10 +14,13 @@ churn <- read.csv("C:\\Users\\chs02\\OneDrive\\바탕 화면\\telecom_churn.csv"
 #-----------------------------------------------------------------------
 # 1. 학습/검증 데이터 분할
 #-----------------------------------------------------------------------
+select_vars <- setdiff(names(churn), c("DataPlan", "MonthlyCharge"))
+select_vars
+
 set.seed(123)
 train_idx <- sample(1:nrow(churn), 0.8 * nrow(churn))
-train <- churn[train_idx, ]
-test  <- churn[-train_idx, ]
+train <- churn[train_idx, select_vars]
+test  <- churn[-train_idx, select_vars]
 
 # 종속변수 factor 변환
 train$Churn <- factor(train$Churn, levels = c(0,1))
@@ -49,7 +52,7 @@ tree.model$cptable   # cp table 확인 (xerror, xstd 포함)
 ## (3-2) Test 데이터 예측 (가지치기 전)
 tree.pred <- predict(tree.model, newdata = test, type = "class")
 acc_tree  <- confusionMatrix(tree.pred, test$Churn)$overall[1]
-acc_tree   # 가지치기전: 0.925
+acc_tree   # 가지치기전: 0.928
 
 ## (3-3) 최적 cp 선택
 cpt <- as.data.frame(tree.model$cptable)
@@ -59,12 +62,17 @@ min_xerror <- min(cpt[, "xerror"])
 cp_min     <- cpt[which.min(cpt[, "xerror"]), "CP"]
 cp_min # 0.005194805
 
+cv_acc_min <- 1 - cpt$xerror[best_idx]
+cv_acc_min # 0.436
+
 # (3-3-B) 1-SE rule 기준 cp
 # -> min(xerror) + xstd(min_xerror 위치)
 threshold   <- min_xerror + cpt[which.min(cpt$xerror), "xstd"]
 cp_1se      <- max(cpt[cpt$xerror <= threshold, "CP"])   # 가장 단순한 트리 선택
-cp_1se  # 0.01038961
+cp_1se  # 0.00909
 
+cv_acc_1se <- 1 - cpt[cpt$CP == cp_1se, "xerror"]
+cv_acc_1se # 0.3922
 
 ## (3-4) 트리 가지치기
 pruned.ct <- prune(tree.model, cp = cp_1se)
@@ -77,13 +85,13 @@ acc_tree_pruned  <- confusionMatrix(tree.pred2, test$Churn)$overall[1]
 cm_tree_pruned    # 혼동행렬
 acc_tree_pruned   # 0.9325337 (의사결정나무 최종 Test 정확도)
 
-
-
 #-----------------------------------------------------------------------
-grid_cp <- expand.grid(cp = seq(0, 0.02, by = 0.002))
-
+# 4. 트리 결과 요약
+#-----------------------------------------------------------------------
 set.seed(123)
-fit_tree_tuned <- train(
+
+grid_cp <- expand.grid(cp = seq(0, 0.02, by = 0.002))
+fit_tree_cv <- train(
   Churn ~ .,
   data      = train,
   method    = "rpart",
@@ -91,34 +99,22 @@ fit_tree_tuned <- train(
   tuneGrid  = grid_cp,
   metric    = "Accuracy"
 )
-fit_tree_tuned
-fit_tree_tuned$results
+fit_tree_cv
 
-## Test 데이터 예측 및 성능 평가
-pred_tree_cv <- predict(fit_tree_tuned, newdata = test)
-cm_tree <- confusionMatrix(pred_tree_cv, test$Churn)
-acc_tree <- confusionMatrix(pred_tree_cv, test$Churn)$overall["Accuracy"]
-
-cm_tree  # 혼동행렬
-acc_tree # 0.934033
-
-#-----------------------------------------------------------------------
-# 결과 요약
-#-----------------------------------------------------------------------
 data_tree <- data.frame(
   # CV 성능 (resample 이용)
-  CV_Accuracy   = mean(fit_tree_tuned$resample$Accuracy),
-  CV_Acc_SD     = sd(fit_tree_tuned$resample$Accuracy),
-  CV_Kappa      = mean(fit_tree_tuned$resample$Kappa),
-  CV_Kappa_SD   = sd(fit_tree_tuned$resample$Kappa),
+  CV_Accuracy   = mean(fit_tree_cv$resample$Accuracy),
+  CV_Acc_SD     = sd(fit_tree_cv$resample$Accuracy),
+  CV_Kappa      = mean(fit_tree_cv$resample$Kappa),
+  CV_Kappa_SD   = sd(fit_tree_cv$resample$Kappa),
   
   # Test 성능 (confusionMatrix 이용)
-  Test_Accuracy = cm_tree$overall["Accuracy"],
-  Test_Kappa    = cm_tree$overall["Kappa"],
-  Sensitivity   = cm_tree$byClass["Sensitivity"],
-  Specificity   = cm_tree$byClass["Specificity"],
-  Precision     = cm_tree$byClass["Precision"],
-  Balanced_Acc  = cm_tree$byClass["Balanced Accuracy"]
+  Test_Accuracy = cm_tree_pruned $overall["Accuracy"],
+  Test_Kappa    = cm_tree_pruned $overall["Kappa"],
+  Sensitivity   = cm_tree_pruned $byClass["Sensitivity"],
+  Specificity   = cm_tree_pruned $byClass["Specificity"],
+  Precision     = cm_tree_pruned $byClass["Precision"],
+  Balanced_Acc  = cm_tree_pruned $byClass["Balanced Accuracy"]
 )
 rownames(data_tree) <- "tree"
 data_tree
