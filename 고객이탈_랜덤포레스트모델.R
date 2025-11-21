@@ -1,6 +1,6 @@
 #=============================================================================
 # 고객 이탈 예측 : 랜덤포레스트 모델
-# 수정: 25-11-19 23:30
+# 수정: 25-11-21 00:20
 #=============================================================================
 library(caret)
 library(dplyr)
@@ -14,10 +14,13 @@ churn <- read.csv("C:\\Users\\chs02\\OneDrive\\바탕 화면\\telecom_churn.csv"
 #-----------------------------------------------------------------------
 # 1. 학습/검증 데이터 분할
 #-----------------------------------------------------------------------
+select_vars <- setdiff(names(churn), c("DataPlan", "MonthlyCharge"))
+select_vars
+
 set.seed(123)
 train_idx <- sample(1:nrow(churn), 0.8 * nrow(churn))
-train <- churn[train_idx, ]
-test  <- churn[-train_idx, ]
+train <- churn[train_idx, select_vars]
+test  <- churn[-train_idx, select_vars]
 
 # 종속변수 factor 변환
 train$Churn <- factor(train$Churn, levels = c(0,1))
@@ -122,31 +125,27 @@ ggplot(oob_only, aes(x = Trees, y = Error)) +
 cat(" OOB Error 최소 트리 수:", best_tree, "\n")
 cat(" 최소 OOB Error:", round(best_error, 4), "\n")
 
-## (3-4) 교차검증 기반 Random Forest (caret)
+## (3-3) 교차검증 기반 Random Forest (caret)
 # 목적: mtry 최적값 찾기
 set.seed(123)
-rf_model <- train(
+fit_rf <- train(
   Churn ~ ., 
   data       = train, 
   method     = "rf",
   trControl  = ctrl,                                 # 5-fold CV
-  tuneGrid   = expand.grid(mtry = 1:10),             # mtry 1~10 탐색
+  tuneGrid   = expand.grid(mtry = 1:8),             # mtry 1~10 탐색
   importance = TRUE,
   ntree      = 200                                   # CV용 트리 수
 )
 print(rf_model) # 튜닝 결과
 
-## (3-5) CV 성능 확인
-rf_model$results[2, ]
-# 정확도: 0.9366
-# Kappa: 0.713
+## (3-4) CV 성능 확인
+fit_rf$resample
+rf_cv_acc <- mean(fit_rf$resample$Accuracy); rf_cv_acc # 0.934
+rf_cv_kap <- mean(fit_rf$resample$Kappa); rf_cv_kap # 0.699
 
-rf_model$resample
-rf_cv_acc <- mean(rf_model$resample$Accuracy); rf_cv_acc # 0.9366
-rf_cv_kap <- mean(rf_model$resample$Kappa); rf_cv_kap # 0.713
-
-## (3-6) mtry 튜닝 결과 시각화
-rf_df <- rf_model$results
+## (3-5) mtry 튜닝 결과 시각화
+rf_df <- fit_rf$results
 
 # 최고 Accuracy 위치
 best_idx  <- which.max(rf_df$Accuracy)
@@ -180,17 +179,17 @@ ggplot(rf_df, aes(x = mtry, y = Accuracy)) +
     axis.title = element_text(face = "bold")
   )
 
-## (3-7) Test 데이터 예측 및 성능 평가
-pred_rf_cv <- predict(rf_model, newdata = test)
+## (3-6) Test 데이터 예측 및 성능 평가
+pred_rf_cv <- predict(fit_rf, newdata = test)
 cm_rf <- confusionMatrix(pred_rf_cv, test$Churn)
 acc_rf <- confusionMatrix(pred_rf_cv, test$Churn)$overall["Accuracy"]
 
 cm_rf  # 혼동행렬
-acc_rf # 0.9445277
+acc_rf # 0.931
 
 
-## (3-8) 변수 중요도 시각화
-imp <- importance(rf_model$finalModel)
+## (3-7) 변수 중요도 시각화
+imp <- importance(fit_rf$finalModel)
 imp_df <- data.frame(
   Variable = rownames(imp),
   MeanDecreaseGini = imp[, "MeanDecreaseGini"]
@@ -223,14 +222,14 @@ ggplot(imp_df, aes(x = reorder(Variable, MeanDecreaseGini),
   )
 
 #-----------------------------------------------------------------------
-# 결과 요약
+# 4. 랜덤포레스트 결과 요약
 #-----------------------------------------------------------------------
 data_rf <- data.frame(
   # CV 성능 (resample 이용)
-  CV_Accuracy   = mean(rf_model$resample$Accuracy),
-  CV_Acc_SD     = sd(rf_model$resample$Accuracy),
-  CV_Kappa      = mean(rf_model$resample$Kappa),
-  CV_Kappa_SD   = sd(rf_model$resample$Kappa),
+  CV_Accuracy   = mean(fit_rf$resample$Accuracy),
+  CV_Acc_SD     = sd(fit_rf$resample$Accuracy),
+  CV_Kappa      = mean(fit_rf$resample$Kappa),
+  CV_Kappa_SD   = sd(fit_rf$resample$Kappa),
   
   # Test 성능 (confusionMatrix 이용)
   Test_Accuracy = cm_rf$overall["Accuracy"],
@@ -242,3 +241,4 @@ data_rf <- data.frame(
 )
 rownames(data_rf) <- "rf"
 data_rf
+
