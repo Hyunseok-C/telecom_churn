@@ -1,6 +1,6 @@
 #=============================================================================
 # 고객 이탈 예측 : KNN모델
-# 수정: 25-11-19 23:30
+# 수정: 25-11-21 00:07
 #=============================================================================
 library(caret)
 library(dplyr)
@@ -14,10 +14,13 @@ churn <- read.csv("C:\\Users\\chs02\\OneDrive\\바탕 화면\\telecom_churn.csv"
 #-----------------------------------------------------------------------
 # 1. 학습/검증 데이터 분할
 #-----------------------------------------------------------------------
+select_vars <- setdiff(names(churn), c("DataPlan", "MonthlyCharge"))
+select_vars
+
 set.seed(123)
 train_idx <- sample(1:nrow(churn), 0.8 * nrow(churn))
-train <- churn[train_idx, ]
-test  <- churn[-train_idx, ]
+train <- churn[train_idx, select_vars]
+test  <- churn[-train_idx, select_vars]
 
 # 종속변수 factor 변환
 train$Churn <- factor(train$Churn, levels = c(0,1))
@@ -31,17 +34,7 @@ ctrl <- trainControl(method="cv", number=5)
 #-----------------------------------------------------------------------
 # 3. KNN (상관관계 0.8 이상 제거 + 표준화 + 최적 k 적용)
 #-----------------------------------------------------------------------
-## (3-1) 상관 높은 변수 제거 (타깃 Churn 제외)
-cor_mat   <- cor(train[, -1])                     # 설명변수들만 상관계수 행렬
-high_cor  <- caret::findCorrelation(cor_mat,
-                                    cutoff = 0.8) # |r| > 0.8 변수 인덱스
-selected_vars <- colnames(train)[-1][-high_cor]   # 선택된 설명변수 이름
-
-# KNN용 학습/검증 데이터 (Churn + 선택된 변수만 사용)
-train_knn <- train[, c("Churn", selected_vars)]
-test_knn  <- test[,  c("Churn", selected_vars)]
-
-## (3-2) KNN 튜닝 그리드 설정
+## (3-1) KNN 튜닝 그리드 설정
 grid_knn <- expand.grid(
   kmax     = seq(1, 15, by = 2),
   distance = c(1, 2),             # Manhattan, Euclidean
@@ -50,11 +43,11 @@ grid_knn <- expand.grid(
                "gaussian")        # 가장 가까운 이웃에 큰 가중, 멀수록 거의 0
 )
 
-## (3-3) KNN 학습
+## (3-2) KNN 학습
 set.seed(123)
 fit_knn_all <- train(
   Churn ~ .,
-  data       = train_knn,
+  data       = train,
   method     = "kknn",
   preProcess = c("center", "scale"), # 표준화
   tuneGrid   = grid_knn,
@@ -64,7 +57,7 @@ fit_knn_all <- train(
 fit_knn_all              # 전체 튜닝 결과
 fit_knn_all$bestTune     # 최적 kmax, distance, kernel 조합
 
-## (3-4) CV 성능 확인
+## (3-3) CV 성능 확인
 # 1) bestTune 따로 저장
 best <- fit_knn_all$bestTune
 
@@ -76,14 +69,9 @@ best_cv <- subset(
     kernel == best$kernel
 )
 best_cv
-# 정확도: 0.8987
-# Kappa: 0.497
+# 정확도: 0.8938, Kappa: 0.448
 
-fit_knn_all$resample
-knn_cv_acc <- mean(fit_knn_all$resample$Accuracy); knn_cv_acc # 0.8987
-knn_cv_kap <- mean(fit_knn_all$resample$Kappa); knn_cv_kap # 0.497
-
-## (3-5) 튜닝 결과 시각화
+## (3-4) 튜닝 결과 시각화
 # caret 튜닝 결과 데이터프레임
 fitknn_df <- fit_knn_all$results
 
@@ -128,19 +116,19 @@ ggplot(fitknn_df,
     axis.title  = element_text(face = "bold")
   )
 
-## (3-5) Test 데이터 최종 성능 평가
+## (3-5) Test 데이터 예측 및 최종 성능 평가
 # 최적 튜닝(KNN 모형)으로 Test 데이터 예측
-pred_knn <- predict(fit_knn_all, newdata = test_knn)
+pred_knn <- predict(fit_knn_all, newdata = test)
 
 # 혼동행렬 및 정확도
-cm_knn   <- caret::confusionMatrix(pred_knn, test_knn$Churn)
+cm_knn   <- caret::confusionMatrix(pred_knn, test$Churn)
 acc_knn  <- cm_knn$overall["Accuracy"]
 
 cm_knn    # 혼동행렬
-acc_knn   # 0.922039 (KNN 최종 Test 정확도)
+acc_knn   # 0.9070465 (KNN 최종 Test 정확도)
 
 #-----------------------------------------------------------------------
-# 결과 요약
+# 4. KNN 결과 요약
 #-----------------------------------------------------------------------
 data_knn <- data.frame(
     # CV 성능 (resample 이용)
@@ -159,3 +147,5 @@ data_knn <- data.frame(
 )
 rownames(data_knn) <- "knn"
 data_knn
+
+
