@@ -1,43 +1,54 @@
 #=============================================================================
 # 고객 이탈 예측 : 모델별 성능 비교
-# 수정: 25-11-20 00:55
+# 수정: 25-11-21 02:55
 #=============================================================================
 #-----------------------------------------------------------------------
-# 성능 확인
+# 1. 성능 확인
 #-----------------------------------------------------------------------
+data_logit
+data_lda
+data_qda
 data_knn
 data_tree
-data_rf
 data_bag
+data_rf
 data_gbm
-data_xgb
-data_qda
-data_lda
+data_svm_poly
+
 # (주의사항) 모든 모델을 돌린 상태여야함
 
 result_metrics <- rbind(
+  data_logit,
+  data_lda,
+  data_qda,
   data_knn,
   data_tree,
-  data_rf,
   data_bag,
+  data_rf,
   data_gbm,
-  data_xgb,
-  data_qda,
-  data_lda
+  data_svm_poly
 )
 
 # 모델 이름 열 생성
-result_metrics$Model <- rownames(df)
+result_metrics$Model <- rownames(result_metrics)
 result_metrics$Model <- factor(result_metrics$Model,
-                   levels = c("knn", "tree", "rf", "bag", "gbm", "xgb"),
-                   labels = c("KNN", "Decision Tree", "Random Forest",
-                              "Bagging", "GBM", "XGBoost"))
+                   levels = c("logit", "lda", "qda", "knn", "tree", "bag", "rf", "gbm","svm_poly"),
+                   labels = c("Logistic Regression",
+                              "LDA",
+                              "QDA",
+                              "KNN",
+                              "Decision Tree",
+                              "Bagging",
+                              "Random Forest",
+                              "GBM",
+                              "SVM (Poly)")
+)
 result_metrics <- result_metrics[, c("Model", setdiff(names(result_metrics), "Model"))]
+rownames(result_metrics) <- 1:nrow(result_metrics)
 result_metrics
 
-
 #-----------------------------------------------------------------------
-# 최종 성능 비교 시각화
+# 2. 최종 성능 비교 시각화
 #-----------------------------------------------------------------------
 ### 시각화1-------------------------------------------------------------
 ## 모델별 Test 정확도와 kappa 비교 시각화
@@ -46,11 +57,11 @@ library(ggplot2)
 df <- result_metrics
 
 # y축 범위 설정
-acc_min <- 0.88
+acc_min <- 0.83
 acc_max <- 0.95
 
-kappa_min <- 0.60
-kappa_max <- 0.80
+kappa_min <- 0.20
+kappa_max <- 1.00
 
 
 # Kappa를 Accuracy 축에 맞게 선형 변환
@@ -60,12 +71,15 @@ df$Kappa_scaled <- (df$Test_Kappa - kappa_min) /
   acc_min
 
 model_cols <- c(
-  "KNN"           = "#FF9999",  # 파스텔 레드
-  "Decision Tree"  = "#FFCC99",  # 파스텔 오렌지
-  "Random Forest"  = "#FFFF99",  # 파스텔 옐로우
-  "Bagging"       = "#CCFFCC",  # 파스텔 그린
-  "GBM"           = "#99CCFF",  # 파스텔 블루
-  "XGBoost"       = "#CC99FF"   # 파스텔 퍼플
+  "Logistic Regression" = "#FFB3BA", # Red (파스텔 레드)
+  "LDA"                 = "#FFCC99", # Orange (파스텔 오렌지)
+  "QDA"                 = "#FFFF99", # Yellow (파스텔 옐로우)
+  "KNN"                 = "#CCFFCC", # Green (파스텔 그린)
+  "Decision Tree"       = "#99FFEB", # Teal/Cyan (파스텔 시안)
+  "Bagging"             = "#99CCFF", # Light Blue (파스텔 블루)
+  "Random Forest"       = "#C5B3FF", # Indigo (파스텔 인디고)
+  "GBM"                 = "#E1B3FF", # Violet (파스텔 바이올렛)
+  "SVM (Poly)"          = "#FFD6E7"  # Soft Pink (무지개 마지막 연핑크)
 )
 
 ggplot(df, aes(x = Model)) +
@@ -118,18 +132,17 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# 시각화를 위한 데이터 정리
-plot_df <- result_metrics %>%
-  select(Model, CV_Accuracy, Test_Accuracy)
-
-plot_df <- plot_df[1:6,]
+result_metrics
+plot_df <- result_metrics[,c("Model", "CV_Accuracy", "Test_Accuracy")]
 
 # Error 계산
 df <- plot_df %>%
   mutate(
     CV_Error   = 1 - CV_Accuracy,
     Test_Error = 1 - Test_Accuracy
-  )
+  ) %>%
+  arrange(desc(Test_Error)) %>%                             # Test_Error 작은 순으로 정렬
+  mutate(Model = factor(Model, levels = Model))       # 이 순서를 factor 레벨로 고정
 
 # long format 변환
 df_long <- df %>%
@@ -138,11 +151,11 @@ df_long <- df %>%
 
 # 시각화
 ggplot(df_long, aes(x = Model, y = Error, group = Model)) +
-  geom_line(color = "gray60", linewidth = 0.6) +
+  geom_line(color = "gray60", linewidth = 1) +
   geom_point(aes(color = Type), size = 4) +
-  ylim(0.055, 0.105) +
+  ylim(0.062, 0.15) +
   geom_text(aes(label = round(Error, 3), color = Type),
-            vjust = -1, size = 3.2, show.legend = FALSE) +
+            vjust = -1,hjust = -0.3,  size = 3.2, show.legend = FALSE) +
   scale_color_manual(values = c("CV_Error" = "#e41a1c", "Test_Error" = "#377eb8"),
                      labels = c("CV Error", "Test Error")) +
   labs(
@@ -154,18 +167,28 @@ ggplot(df_long, aes(x = Model, y = Error, group = Model)) +
   theme_minimal(base_size = 14) +
   theme(
     panel.border = element_rect(color = "black", fill = NA),
+    axis.text.x = element_text(angle = 20, hjust = 1),
     plot.title = element_text(hjust = 0.5)
   )
 
-
 ### 시각화3-------------------------------------------------------------
-## 모델별 성능 6가지 비교 레이다 차트
+## 모델별 성능 9가지 비교 레이다 차트
 library(fmsb)
 library(dplyr)
 
-df <- result_metrics[1:6,c(1,6:11)]
+df <- result_metrics[,c(1,6:11)]
 
-cols <- c("red","orange","yellow","green","blue","purple")
+cols <- c(
+  "#FF4C4C",  # Red
+  "#FF914D",  # Orange
+  "#FFD93D",  # Yellow
+  "#4CD964",  # Green
+  "#1ABC9C",  # Teal / Cyan
+  "#3498DB",  # Blue
+  "#5E60CE",  # Indigo
+  "#9B59B6",  # Violet
+  "#FF6F91"   # Pink
+)
 
 # 2. 지표별 min/max (모든 모델 기준) -> 정규화
 metric_mat <- as.matrix(df[, -1])
@@ -185,7 +208,8 @@ metric_names <- c("Test_Accuracy", "Test_Kappa", "Sensitivity",
 
 
 # 3. 모델별 레이다 차트
-par(mfrow = c(2, 3))   # 한 화면에 6개 출력
+par(mfrow = c(2, 5))
+plot.new()
 for (i in 1:nrow(df)) {
   
   model_name      <- df$Model[i]
@@ -205,7 +229,7 @@ for (i in 1:nrow(df)) {
   colnames(radar_mat) <- metric_names
   rownames(radar_mat) <- c("max", "min", model_name)
   
-  radar_df <- as.data.frame(radar_mat)   # ★ 반드시 data.frame이어야 함
+  radar_df <- as.data.frame(radar_mat)   
   
   radarchart(
     radar_df,
@@ -225,3 +249,4 @@ for (i in 1:nrow(df)) {
   )
 }
 par(mfrow = c(1, 1))
+
