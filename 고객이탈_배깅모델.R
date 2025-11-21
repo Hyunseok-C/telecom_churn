@@ -1,6 +1,6 @@
 #=============================================================================
 # 고객 이탈 예측 : 배깅 모델
-# 수정: 25-11-19 23:30
+# 수정: 25-11-21 01:30
 #=============================================================================
 library(caret)
 library(dplyr)
@@ -14,10 +14,13 @@ churn <- read.csv("C:\\Users\\chs02\\OneDrive\\바탕 화면\\telecom_churn.csv"
 #-----------------------------------------------------------------------
 # 1. 학습/검증 데이터 분할
 #-----------------------------------------------------------------------
+select_vars <- setdiff(names(churn), c("DataPlan", "MonthlyCharge"))
+select_vars
+
 set.seed(123)
 train_idx <- sample(1:nrow(churn), 0.8 * nrow(churn))
-train <- churn[train_idx, ]
-test  <- churn[-train_idx, ]
+train <- churn[train_idx, select_vars]
+test  <- churn[-train_idx, select_vars]
 
 # 종속변수 factor 변환
 train$Churn <- factor(train$Churn, levels = c(0,1))
@@ -45,6 +48,7 @@ bag_results <- data.frame(
 )
 
 # (3-1-2) 각 nbagg에 대해 Bagging 학습 후 OOB Error(coob) 저장
+# (주의) 계산량 많음
 set.seed(123)
 for (i in seq_along(nbagg_list)) {
   
@@ -68,7 +72,7 @@ best_error <- bag_results$oob_error[best_idx]         # 최소 OOB Error
 best_df <- data.frame(nbagg = best_tree, oob_error = best_error)  # 단일 행 데이터프레임
 
 median_oob <- median(bag_results$oob_error)  # 전체 OOB Error 중앙값
-plateau_bg <- 50                             # OOB Error가 평탄 nbagg 기준
+plateau_bg <- 100                             # OOB Error가 평탄 nbagg 기준
 
 # (3-1-4) nbagg vs OOB Error 시각화
 ggplot(bag_results, aes(x = nbagg, y = oob_error)) +
@@ -87,7 +91,7 @@ ggplot(bag_results, aes(x = nbagg, y = oob_error)) +
   annotate("text",
            x = plateau_bg + 5,
            y = 0.1,
-           label = "Plateau start (~50 trees)",
+           label = "Plateau start (~100 trees)",
            color = "darkgreen",
            hjust = 0, vjust = 1.2,
            fontface = "bold") +
@@ -147,20 +151,20 @@ fit_bag <- train(
   method    = "treebag",
   trControl = ctrl,
   metric    = "Accuracy",
-  nbagg     = 50      # ← 변경 가능 (기본 50)
+  nbagg     = 100      # 트리 수
 )
 fit_bag
 
 # (3-2-4) test 데이터에 대한 예측 및 혼동행렬/정확도 계산
 pred_bag <- predict(fit_bag, newdata = test)
-cm_bag   <- caret::confusionMatrix(pred_final, test$Churn)
-acc_bag  <- cm_final$overall["Accuracy"]
+cm_bag   <- caret::confusionMatrix(pred_bag, test$Churn)
+acc_bag  <- cm_bag$overall["Accuracy"]
 
 cm_bag   # 혼동행렬
-acc_bag  # 0.9385307
+acc_bag  # 0.9355322
 
 #-----------------------------------------------------------------------
-# 결과 요약
+# 4. 배깅 결과 요약
 #-----------------------------------------------------------------------
 data_bag <- data.frame(
   # CV 성능 (resample 이용)
@@ -179,3 +183,4 @@ data_bag <- data.frame(
 )
 rownames(data_bag) <- "bag"
 data_bag
+
