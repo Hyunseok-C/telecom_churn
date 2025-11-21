@@ -1,6 +1,6 @@
 #=============================================================================
 # 고객 이탈 예측 : 부스팅 모델
-# 수정: 25-11-19 23:30
+# 수정: 25-11-21 02:00
 #=============================================================================
 library(caret)
 library(dplyr)
@@ -14,10 +14,13 @@ churn <- read.csv("C:\\Users\\chs02\\OneDrive\\바탕 화면\\telecom_churn.csv"
 #-----------------------------------------------------------------------
 # 1. 학습/검증 데이터 분할
 #-----------------------------------------------------------------------
+select_vars <- setdiff(names(churn), c("DataPlan", "MonthlyCharge"))
+select_vars
+
 set.seed(123)
 train_idx <- sample(1:nrow(churn), 0.8 * nrow(churn))
-train <- churn[train_idx, ]
-test  <- churn[-train_idx, ]
+train <- churn[train_idx, select_vars]
+test  <- churn[-train_idx, select_vars]
 
 # 종속변수 factor 변환
 train$Churn <- factor(train$Churn, levels = c(0,1))
@@ -31,7 +34,7 @@ ctrl <- trainControl(method="cv", number=5)
 #-----------------------------------------------------------------------
 # 3. 부스팅
 #-----------------------------------------------------------------------
-# (3-1) GBM(GBoosting) 튜닝 그리드 설정
+## (3-1) GBM(GBoosting) 튜닝 그리드 설정
 grid_gbm <- expand.grid(
   interaction.depth = c(3, 5, 7),     # 트리 깊이(각 트리의 분기 수)
   n.trees           = c(200, 300, 500),   # 트리(부스팅 반복) 수
@@ -39,7 +42,7 @@ grid_gbm <- expand.grid(
   n.minobsinnode    = c(10)            # 리프 노드 최소 관측 수
 )
 
-# (3-2) GBM 모델 학습 (5-fold CV 기반 하이퍼파라미터 튜닝)
+## (3-2) GBM 모델 학습 (5-fold CV 기반 하이퍼파라미터 튜닝)
 set.seed(123)
 fit_gbm <- train(
   Churn ~ .,
@@ -55,22 +58,24 @@ fit_gbm <- train(
 fit_gbm
 fit_gbm$bestTune
 
-# (3-2) CV 성능확인
+## (3-3) CV 성능확인
 fit_gbm$resample
-gbm_cv_acc <- mean(fit_gbm$resample$Accuracy); gbm_cv_acc # 
-gbm_cv_kap <- mean(fit_gbm$resample$Kappa); gbm_cv_kap # 
+gbm_cv_acc <- mean(fit_gbm$resample$Accuracy); gbm_cv_acc # 0.935109
+gbm_cv_kap <- mean(fit_gbm$resample$Kappa); gbm_cv_kap # 0.7044947
 
-# (3-3) Test 데이터 성능 측정
+## (3-4) Test 데이터 성능 측정
 pred_gbm <- predict(fit_gbm, newdata = test)
 cm_gbm   <- confusionMatrix(pred_gbm, test$Churn)
-cm_gbm
 
 # Test Accuracy 추출
 acc_gbm  <- cm_gbm$overall["Accuracy"]
-acc_gbm   # 0.9355322
 
+cm_gbm    # 혼동행렬
+acc_gbm   # 0.9369315
+
+train
 #-----------------------------------------------------------------------
-# 결과 요약
+# 4. 부스팅 결과 요약
 #-----------------------------------------------------------------------
 data_gbm <- data.frame(
   # CV 성능 (resample 이용)
@@ -89,65 +94,7 @@ data_gbm <- data.frame(
 )
 rownames(data_gbm) <- "gbm"
 data_gbm
-
-#-----------------------------------------------------------------------
-# 4.(추가) XGBoost (부스팅)
-#-----------------------------------------------------------------------
-library(xgboost)
-#-----------------------------------------------------------------------
-grid_xgb <- expand.grid(
-  nrounds = c(200, 300, 500),
-  max_depth = c(3, 5, 7),
-  eta = c(0.05, 0.01, 0.1),
-  gamma = 0,
-  colsample_bytree = 0.8,
-  min_child_weight = 1,
-  subsample = 0.8
-)
-
-set.seed(123)
-fit_xgb <- train(
-  Churn ~ .,
-  data = train,
-  method = "xgbTree",
-  trControl = ctrl,
-  tuneGrid = grid_xgb,
-  metric = "Accuracy"
-)
-fit_xgb
-fit_xgb$bestTune
-
-## CV 성능 평가
-fit_xgb$resample
-xgb_cv_acc <- mean(fit_xgb$resample$Accuracy); xgb_cv_acc # 0.9388614
-xgb_cv_kap <- mean(fit_xgb$resample$Kappa); xgb_cv_kap # 0.723382
-
-# 테스트 데이터 예측 및 정확도
-pred_xgb <- predict(fit_xgb, newdata = test)
-cm_xgb   <- caret::confusionMatrix(pred_xgb, test$Churn)
-acc_xgb  <- cm_xgb$overall["Accuracy"]
-
-cm_xgb  # 혼동행렬
-acc_xgb # 0.9415292
-
-#-----------------------------------------------------------------------
-# 결과 요약
-#-----------------------------------------------------------------------
-data_xgb <- data.frame(
-  # CV 성능 (resample 이용)
-  CV_Accuracy   = mean(fit_xgb$resample$Accuracy),
-  CV_Acc_SD     = sd(fit_xgb$resample$Accuracy),
-  CV_Kappa      = mean(fit_xgb$resample$Kappa),
-  CV_Kappa_SD   = sd(fit_xgb$resample$Kappa),
-  
-  # Test 성능 (confusionMatrix 이용)
-  Test_Accuracy = cm_xgb$overall["Accuracy"],
-  Test_Kappa    = cm_xgb$overall["Kappa"],
-  Sensitivity   = cm_xgb$byClass["Sensitivity"],
-  Specificity   = cm_xgb$byClass["Specificity"],
-  Precision     = cm_xgb$byClass["Precision"],
-  Balanced_Acc  = cm_xgb$byClass["Balanced Accuracy"]
-)
 rownames(data_xgb) <- "xgb"
 data_xgb
+
 
