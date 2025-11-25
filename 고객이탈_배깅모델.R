@@ -1,9 +1,8 @@
 #=============================================================================
 # 고객 이탈 예측 : 배깅 모델
-# 수정: 25-11-21 01:30
+# 수정: 25-11-24 23:57
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -143,7 +142,7 @@ ggplot(bag_results, aes(x = nbagg, y = oob_error)) +
 #----------------------------------------------------------
 # (3-2) 선택된 nbagg로 최종 Bagging 모형 적합 & test 성능 평가
 #----------------------------------------------------------
-# (3-2-1) 최종 Bagging 모형 학습 (plateau 기준으로 nbagg = 50 사용)
+# (3-2-1) 최종 Bagging 모형 학습 (plateau 기준으로 nbagg = 100 사용)
 set.seed(123)
 fit_bag <- train(
   Churn ~ .,
@@ -161,7 +160,7 @@ cm_bag   <- caret::confusionMatrix(pred_bag, test$Churn)
 acc_bag  <- cm_bag$overall["Accuracy"]
 
 cm_bag   # 혼동행렬
-acc_bag  # 0.9355322
+acc_bag  # 0.934033
 
 #-----------------------------------------------------------------------
 # 4. 배깅 결과 요약
@@ -179,8 +178,11 @@ data_bag <- data.frame(
   Sensitivity   = cm_bag$byClass["Sensitivity"],
   Specificity   = cm_bag$byClass["Specificity"],
   Precision     = cm_bag$byClass["Precision"],
-  Balanced_Acc  = cm_bag$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_bag$byClass["Balanced Accuracy"],
+  F1 = cm_bag$byClass["F1"]
 )
 rownames(data_bag) <- "bag"
 data_bag
+
+
 
