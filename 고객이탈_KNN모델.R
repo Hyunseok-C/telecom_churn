@@ -1,9 +1,8 @@
 #=============================================================================
 # 고객 이탈 예측 : KNN모델
-# 수정: 25-11-21 00:07
+# 수정: 25-11-24 23:45
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -44,6 +43,7 @@ grid_knn <- expand.grid(
 )
 
 ## (3-2) KNN 학습
+# (주의) 계산량 매우 많음
 set.seed(123)
 fit_knn_all <- train(
   Churn ~ .,
@@ -143,9 +143,11 @@ data_knn <- data.frame(
     Sensitivity   = cm_knn$byClass["Sensitivity"],
     Specificity   = cm_knn$byClass["Specificity"],
     Precision     = cm_knn$byClass["Precision"],
-    Balanced_Acc  = cm_knn$byClass["Balanced Accuracy"]
+    Balanced_Acc  = cm_knn$byClass["Balanced Accuracy"],
+    F1 = cm_knn$byClass["F1"]
 )
 rownames(data_knn) <- "knn"
 data_knn
+
 
 
