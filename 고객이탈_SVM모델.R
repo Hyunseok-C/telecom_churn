@@ -1,10 +1,9 @@
 #=============================================================================
 # 고객 이탈 예측 : 서포트 벡터 머신(SVM) 모델
 # -> 두 클래스를 가장 넓은 마진(margin)으로 구분하는 최적의 결정경계를 찾는 모델
-# 수정: 25-11-21 14:40
+# 수정: 25-11-25 00:25
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -35,9 +34,9 @@ ctrl <- trainControl(method="cv", number=5)
 #-----------------------------------------------------------------------
 # 3. 서보트 벡터 머신
 #-----------------------------------------------------------------------
-#-----------------------------------------------------------------------
+#----------------------------------------------------------
 ## (3-1) 선형 커널 SVM
-#-----------------------------------------------------------------------
+#----------------------------------------------------------
 ## (3-1-1) 선형 SVM 튜닝 그리드 설정
 grid_linear <- expand.grid(
   C = 10 ^ seq(-1, 1, by = 1)
@@ -67,10 +66,9 @@ acc_svm_linear <- cm_svm_linear$overall["Accuracy"]
 cm_svm_linear  # 혼동행렬
 acc_svm_linear # 0.853
 
-
-#-----------------------------------------------------------------------
-## (3-2) RBF 커널 SVM
-#-----------------------------------------------------------------------
+#----------------------------------------------------------
+## (3-2) RBF(방사) 커널 SVM
+#----------------------------------------------------------
 ## (3-2-1) RBF SVM 튜닝 그리드 설정
 grid_rbf <- expand.grid(
   sigma = 10 ^ seq(-2, 1, by = 1),   # gamma 역할
@@ -78,6 +76,7 @@ grid_rbf <- expand.grid(
 )
 
 ## (3-2-2) RBF SVM 모델 학습 (5-fold CV 기반)
+# (주의) 연산량 많음
 set.seed(123)
 fit_svm_rbf <- train(
   Churn ~ .,
@@ -109,9 +108,9 @@ acc_svm_rbf <- cm_svm_rbf$overall["Accuracy"]
 cm_svm_rbf  # 혼동행렬
 acc_svm_rbf # 0.9175412
 
-#-----------------------------------------------------------------------
+#----------------------------------------------------------
 ## (3-3) 다항 커널 SVM
-#-----------------------------------------------------------------------
+#----------------------------------------------------------
 ## (3-3-1) 다항 SVM 튜닝 그리드 설정
 grid_poly <- expand.grid(
   degree = c(2, 3, 4),
@@ -120,7 +119,7 @@ grid_poly <- expand.grid(
 )
 
 ## (3-3-2) 다항 SVM 모델 학습 (5-fold CV 기반)
-# (주의) 연산량 더 많음
+# (주의) 연산량 매우 많음
 set.seed(123)
 fit_svm_poly <- train(
   Churn ~ .,
@@ -156,10 +155,10 @@ acc_svm_poly # 0.9265367
 #-----------------------------------------------------------------------
 # 4. 튜닝 그리드 시각화
 #-----------------------------------------------------------------------
-## (1) Linear SVM 정확도 히트맵
+## (4-1) Linear SVM 정확도 히트맵
 fit_svm_linear$results # 모두 동일
 
-## (2) RBF SVM 정확도 히트맵
+## (4-2) RBF SVM 정확도 히트맵
 # caret 결과 불러오기
 df_rbf <- fit_svm_rbf$results
 
@@ -185,7 +184,7 @@ ggplot(df_rbf, aes(x = C, y = sigma, fill = Accuracy)) +
   )
 
 
-## (3) Poly SVM 정확도 히트맵
+## (4-3) Poly SVM 정확도 히트맵
 # caret 결과 불러오기
 df_poly <- fit_svm_poly$results
 
@@ -227,7 +226,8 @@ data_svm_linear <- data.frame(
   Sensitivity   = cm_svm_linear$byClass["Sensitivity"],
   Specificity   = cm_svm_linear$byClass["Specificity"],
   Precision     = cm_svm_linear$byClass["Precision"],
-  Balanced_Acc  = cm_svm_linear$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_svm_linear$byClass["Balanced Accuracy"],
+  F1 = cm_svm_linear$byClass["F1"]
 )
 rownames(data_svm_linear) <- "svm_linear"
 data_svm_linear
@@ -247,7 +247,8 @@ data_svm_rbf <- data.frame(
   Sensitivity   = cm_svm_rbf$byClass["Sensitivity"],
   Specificity   = cm_svm_rbf$byClass["Specificity"],
   Precision     = cm_svm_rbf$byClass["Precision"],
-  Balanced_Acc  = cm_svm_rbf$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_svm_rbf$byClass["Balanced Accuracy"],
+  F1 = cm_svm_rbf$byClass["F1"]
 )
 rownames(data_svm_rbf) <- "svm_rbf"
 data_svm_rbf
@@ -268,7 +269,8 @@ data_svm_poly <- data.frame(
   Sensitivity   = cm_svm_poly$byClass["Sensitivity"],
   Specificity   = cm_svm_poly$byClass["Specificity"],
   Precision     = cm_svm_poly$byClass["Precision"],
-  Balanced_Acc  = cm_svm_poly$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_svm_poly$byClass["Balanced Accuracy"],
+  F1 = cm_svm_poly$byClass["F1"]
 )
 rownames(data_svm_poly) <- "svm_poly"
 data_svm_poly
@@ -277,7 +279,6 @@ data_svm_poly
 # (5-4) 세 가지 SVM 성능 비교 테이블 (CV / Test Accuracy 중심)
 #-------------------------------------------------------------
 library(reshape2)
-
 svm_compare <- rbind(
   data_svm_linear,
   data_svm_rbf,
@@ -294,7 +295,7 @@ df_long <- melt(svm_compare_acc, id.vars = "Model",
                 variable.name = "Type",
                 value.name = "Accuracy")
 
-# 그래프
+# 그래프 시각화
 ggplot(df_long, aes(x = Model, y = Accuracy, group = Type, color = Type)) +
   geom_line(linewidth = 1.2) +
   geom_point(size = 4) +
@@ -325,7 +326,7 @@ library(pROC)
 library(dplyr)
 library(ggplot2)
 
-# 1) 공통 준비
+# (6-1) 공통 준비
 y_true <- test$Churn
 x_test <- test[, setdiff(names(test), "Churn")]
 
@@ -333,22 +334,23 @@ kmod_lin  <- fit_svm_linear$finalModel
 kmod_rbf  <- fit_svm_rbf$finalModel
 kmod_poly <- fit_svm_poly$finalModel
 
-# 2) train 때 사용된 preProcess를 그대로 test에 적용
+# (6-2) train 때 사용된 preProcess를 그대로 test에 적용
 x_test_lin_pp  <- predict(fit_svm_linear$preProcess, x_test)
 x_test_rbf_pp  <- predict(fit_svm_rbf$preProcess,   x_test)
 x_test_poly_pp <- predict(fit_svm_poly$preProcess,  x_test)
 
-# 3) decision value (연속형 점수) 추출
+# (6-3) decision value (연속형 점수) 추출
 score_lin_vec  <- as.numeric(predict(kmod_lin,  as.matrix(x_test_lin_pp),  type = "decision"))
 score_rbf_vec  <- as.numeric(predict(kmod_rbf,  as.matrix(x_test_rbf_pp),  type = "decision"))
 score_poly_vec <- as.numeric(predict(kmod_poly, as.matrix(x_test_poly_pp), type = "decision"))
 
-# 4) ROC 계산
-roc_lin  <- roc(y_true, score_lin_vec)
-roc_rbf  <- roc(y_true, score_rbf_vec)
-roc_poly <- roc(y_true, score_poly_vec)
+# (6-4) ROC 계산
+y_true_num <- as.numeric(y_true)
+roc_lin  <- roc(y_true_num, score_lin_vec)
+roc_rbf  <- roc(y_true_num, score_rbf_vec)
+roc_poly <- roc(y_true_num, score_poly_vec)
 
-# 5) ggplot용 데이터
+# (6-5) ggplot용 데이터
 df_roc <- bind_rows(
   data.frame(
     Kernel = paste0("Linear (AUC = ", round(auc(roc_lin), 3), ")"),
@@ -367,13 +369,13 @@ df_roc <- bind_rows(
   )
 )
 
-# 6) ROC 시각화
+# (6-6) ROC 시각화
 ggplot(df_roc, aes(x = FPR, y = TPR, color = Kernel)) +
   geom_line(linewidth = 1.1) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   coord_equal() +
   labs(
-    title = "SVM Kernel Comparison: ROC Curve",
+    title = "SVM 커널 비교: ROC 곡선",
     x     = "False Positive Rate (1 - Specificity)",
     y     = "True Positive Rate (Sensitivity)",
     color = "Kernel"
@@ -381,5 +383,57 @@ ggplot(df_roc, aes(x = FPR, y = TPR, color = Kernel)) +
   theme_minimal(base_size = 14) +
   theme(
     panel.border = element_rect(color = "black", fill = NA),
-    plot.title   = element_text(hjust = 0.5)
+    plot.title   = element_text(hjust = 0.5),
+    legend.position = "bottom"
   )
+
+#-----------------------------------------------------------------------
+# 7. 7가지 지표 비교
+#-----------------------------------------------------------------------
+# (7-1) 모델별 7가지 지표만 추출
+df <- rbind(
+  data_svm_linear[, c("Test_Accuracy","Test_Kappa","Sensitivity","Specificity","Precision","Balanced_Acc","F1")],
+  data_svm_rbf[,    c("Test_Accuracy","Test_Kappa","Sensitivity","Specificity","Precision","Balanced_Acc","F1")],
+  data_svm_poly[,   c("Test_Accuracy","Test_Kappa","Sensitivity","Specificity","Precision","Balanced_Acc","F1")]
+)
+
+rownames(df) <- c("Linear", "RBF", "Poly")
+
+# (7-2) 레이다 차트용 max/min row 추가
+df_radar <- rbind(
+  max = rep(1, 7),
+  min = rep(0, 7),
+  df
+)
+
+# (7-3) 시각화
+colors_border <- c("red", "blue", "darkgreen")
+colors_in     <- adjustcolor(colors_border, alpha.f = 0.2)
+
+library(fmsb)
+radarchart(
+  df_radar,
+  axistype = 1,
+  pcol     = colors_border,
+  pfcol    = colors_in,
+  plwd     = 3,
+  plty     = 1,
+  cglcol   = "grey",
+  cglty    = 1,
+  axislabcol = "black",
+  cglwd    = 0.8,
+  vlcex    = 0.9,
+  title    = "SVM Kernel Comparison (7 Metrics)"
+)
+legend(
+  x = "topright",
+  legend = c("Linear", "RBF", "Poly"),
+  bty = "n",
+  pch = 20,
+  col = colors_border,
+  text.col = "black",
+  cex = 0.9
+)
+
+
+
