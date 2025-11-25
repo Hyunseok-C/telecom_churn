@@ -1,9 +1,8 @@
 #=============================================================================
 # 고객 이탈 예측 : 부스팅 모델
-# 수정: 25-11-21 02:00
+# 수정: 25-11-24 00:20
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -43,6 +42,7 @@ grid_gbm <- expand.grid(
 )
 
 ## (3-2) GBM 모델 학습 (5-fold CV 기반 하이퍼파라미터 튜닝)
+# (주의) 계산량 많음
 set.seed(123)
 fit_gbm <- train(
   Churn ~ .,
@@ -71,9 +71,8 @@ cm_gbm   <- confusionMatrix(pred_gbm, test$Churn)
 acc_gbm  <- cm_gbm$overall["Accuracy"]
 
 cm_gbm    # 혼동행렬
-acc_gbm   # 0.9369315
+acc_gbm   # 0.937
 
-train
 #-----------------------------------------------------------------------
 # 4. 부스팅 결과 요약
 #-----------------------------------------------------------------------
@@ -90,11 +89,10 @@ data_gbm <- data.frame(
   Sensitivity   = cm_gbm$byClass["Sensitivity"],
   Specificity   = cm_gbm$byClass["Specificity"],
   Precision     = cm_gbm$byClass["Precision"],
-  Balanced_Acc  = cm_gbm$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_gbm$byClass["Balanced Accuracy"],
+  F1 = cm_gbm$byClass["F1"]
 )
 rownames(data_gbm) <- "gbm"
 data_gbm
-rownames(data_xgb) <- "xgb"
-data_xgb
 
 
