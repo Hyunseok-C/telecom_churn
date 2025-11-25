@@ -1,9 +1,8 @@
 #=============================================================================
 # 고객 이탈 예측 : 의사결정나무(트리) 모델
-# 수정: 25-11-21 02:30
+# 수정: 25-11-25 00:04
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -62,17 +61,11 @@ min_xerror <- min(cpt[, "xerror"])
 cp_min     <- cpt[which.min(cpt[, "xerror"]), "CP"]
 cp_min # 0.005194805
 
-cv_acc_min <- 1 - cpt$xerror[best_idx]
-cv_acc_min # 0.436
-
 # (3-3-B) 1-SE rule 기준 cp
 # -> min(xerror) + xstd(min_xerror 위치)
 threshold   <- min_xerror + cpt[which.min(cpt$xerror), "xstd"]
 cp_1se      <- max(cpt[cpt$xerror <= threshold, "CP"])   # 가장 단순한 트리 선택
 cp_1se  # 0.00909
-
-cv_acc_1se <- 1 - cpt[cpt$CP == cp_1se, "xerror"]
-cv_acc_1se # 0.3922
 
 ## (3-4) 트리 가지치기
 pruned.ct <- prune(tree.model, cp = cp_1se)
@@ -88,9 +81,8 @@ acc_tree_pruned   # 0.9325337 (의사결정나무 최종 Test 정확도)
 #-----------------------------------------------------------------------
 # 4. 트리 결과 요약
 #-----------------------------------------------------------------------
+grid_cp <- expand.grid(cp = cp_1se) # CV 정확도, kappa를 얻기위해
 set.seed(123)
-
-grid_cp <- expand.grid(cp = seq(0, 0.02, by = 0.002))
 fit_tree_cv <- train(
   Churn ~ .,
   data      = train,
@@ -114,15 +106,16 @@ data_tree <- data.frame(
   Sensitivity   = cm_tree_pruned $byClass["Sensitivity"],
   Specificity   = cm_tree_pruned $byClass["Specificity"],
   Precision     = cm_tree_pruned $byClass["Precision"],
-  Balanced_Acc  = cm_tree_pruned $byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_tree_pruned $byClass["Balanced Accuracy"],
+  F1 = cm_tree_pruned $byClass["F1"]
 )
 rownames(data_tree) <- "tree"
 data_tree
 
 #-----------------------------------------------------------------------
-# 4. 의사결정나무 트리 시각화
+# 5. 의사결정나무 트리 시각화
 #-----------------------------------------------------------------------
-## (4-1) 트리 구조 시각화
+## (5-1) <트리 구조 시각화>
 # 완전 트리 (Pruning 전)
 prp(
   tree.model,
@@ -158,7 +151,7 @@ prp(
 )
 
 
-## (4-2) min(xerror) vs 1-SE Rule 시각화
+## (5-2) <min(xerror) vs 1-SE Rule 시각화>
 cpt$cp_index <- 1:nrow(cpt)   # x축 index
 
 # min(xerror) 위치
@@ -209,36 +202,6 @@ ggplot(cpt, aes(x = cp_index, y = xerror)) +
   theme_light() +
   theme(plot.title = element_text(face = "bold"))
 
-## (4-3) 변수 중요도 시각화
-# 1) 변수 중요도 추출 (이름 있는 벡터 → 데이터프레임으로 변환)
-imp_dt <- data.frame(
-  Variable  = names(tree.model$variable.importance),
-  Importance = as.numeric(tree.model$variable.importance)
-)
 
-# 중요도 내림차순 정렬
-imp_dt <- imp_dt[order(imp_dt$Importance, decreasing = TRUE), ]
 
-# 2) ggplot 시각화 (막대 테두리 + 그라디언트 + 범례 제거)
-ggplot(imp_dt,
-       aes(x = reorder(Variable, Importance),
-           y = Importance,
-           fill = Importance)) +
-  geom_col(color = "black", linewidth = 0.3) +   # 막대 테두리
-  coord_flip() +
-  scale_fill_gradient(
-    low  = "#D6EAF8",   # 중요도 낮음 → 연한 파랑
-    high = "#2E86C1"    # 중요도 높음 → 진한 파랑
-  ) +
-  labs(
-    title = "Decision Tree: 변수 중요도",
-    x = "변수",
-    y = "Importance"
-  ) +
-  theme_light() +
-  theme(
-    plot.title      = element_text(face = "bold", size = 16),
-    axis.title      = element_text(face = "bold"),
-    legend.position = "none"     # 범례 제거
-  )
 
