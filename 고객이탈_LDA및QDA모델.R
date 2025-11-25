@@ -1,9 +1,8 @@
 #=============================================================================
 # 고객 이탈 예측 : LDA/QDA 모델
-# 수정: 25-11-20 23:55
+# 수정: 25-11-24 23:26
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -80,7 +79,8 @@ data_lda <- data.frame(
   Sensitivity   = cm_lda$byClass["Sensitivity"],
   Specificity   = cm_lda$byClass["Specificity"],
   Precision     = cm_lda$byClass["Precision"],
-  Balanced_Acc  = cm_lda$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_lda$byClass["Balanced Accuracy"],
+  F1 = cm_lda$byClass["F1"]
 )
 rownames(data_lda) <- "lda"
 data_lda
@@ -132,8 +132,10 @@ data_qda <- data.frame(
   Sensitivity   = cm_qda$byClass["Sensitivity"],
   Specificity   = cm_qda$byClass["Specificity"],
   Precision     = cm_qda$byClass["Precision"],
-  Balanced_Acc  = cm_qda$byClass["Balanced Accuracy"]
+  Balanced_Acc  = cm_qda$byClass["Balanced Accuracy"],
+  F1 = cm_qda$byClass["F1"]
 )
 rownames(data_qda) <- "qda"
 data_qda
+
 
