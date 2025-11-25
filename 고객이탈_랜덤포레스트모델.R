@@ -1,9 +1,8 @@
 #=============================================================================
 # 고객 이탈 예측 : 랜덤포레스트 모델
-# 수정: 25-11-21 00:20
+# 수정: 25-11-25 00:20
 #=============================================================================
 library(caret)
-library(dplyr)
 library(ggplot2)
 
 #-----------------------------------------------------------------------
@@ -67,7 +66,7 @@ best_error <- oob_only$Error[best_tree]
 
 # 중앙값 OOB Error 계산
 median_oob <- median(oob_only$Error)
-plateau_pt  <- 200
+plateau_pt  <- 300
 
 ggplot(oob_only, aes(x = Trees, y = Error)) +
   geom_line(color = "#E74C3C", linewidth = 1.1) +
@@ -95,7 +94,7 @@ ggplot(oob_only, aes(x = Trees, y = Error)) +
   annotate("text",
            x = plateau_pt + 10,
            y = max(oob_only$Error),
-           label = "Plateau start (~200 trees)",
+           label = "Plateau start (~300 trees)",
            color = "darkgreen",
            hjust = 0, vjust = 1.2,
            fontface = "bold") +
@@ -132,17 +131,17 @@ fit_rf <- train(
   Churn ~ ., 
   data       = train, 
   method     = "rf",
-  trControl  = ctrl,                                 # 5-fold CV
-  tuneGrid   = expand.grid(mtry = 1:8),             # mtry 1~10 탐색
+  trControl  = ctrl,                                # 5-fold CV
+  tuneGrid   = expand.grid(mtry = 1:8),             # mtry 1~8 탐색
   importance = TRUE,
-  ntree      = 200                                   # CV용 트리 수
+  ntree      = 300                                   # CV용 트리 수
 )
-print(rf_model) # 튜닝 결과
+print(fit_rf) # 튜닝 결과
 
 ## (3-4) CV 성능 확인
 fit_rf$resample
 rf_cv_acc <- mean(fit_rf$resample$Accuracy); rf_cv_acc # 0.934
-rf_cv_kap <- mean(fit_rf$resample$Kappa); rf_cv_kap # 0.699
+rf_cv_kap <- mean(fit_rf$resample$Kappa); rf_cv_kap # 0.702
 
 ## (3-5) mtry 튜닝 결과 시각화
 rf_df <- fit_rf$results
@@ -185,10 +184,36 @@ cm_rf <- confusionMatrix(pred_rf_cv, test$Churn)
 acc_rf <- confusionMatrix(pred_rf_cv, test$Churn)$overall["Accuracy"]
 
 cm_rf  # 혼동행렬
-acc_rf # 0.931
+acc_rf # 0.934
 
 
-## (3-7) 변수 중요도 시각화
+#-----------------------------------------------------------------------
+# 4. 랜덤포레스트 결과 요약
+#-----------------------------------------------------------------------
+data_rf <- data.frame(
+  # CV 성능 (resample 이용)
+  CV_Accuracy   = mean(fit_rf$resample$Accuracy),
+  CV_Acc_SD     = sd(fit_rf$resample$Accuracy),
+  CV_Kappa      = mean(fit_rf$resample$Kappa),
+  CV_Kappa_SD   = sd(fit_rf$resample$Kappa),
+  
+  # Test 성능 (confusionMatrix 이용)
+  Test_Accuracy = cm_rf$overall["Accuracy"],
+  Test_Kappa    = cm_rf$overall["Kappa"],
+  Sensitivity   = cm_rf$byClass["Sensitivity"],
+  Specificity   = cm_rf$byClass["Specificity"],
+  Precision     = cm_rf$byClass["Precision"],
+  Balanced_Acc  = cm_rf$byClass["Balanced Accuracy"],
+  F1 = cm_rf$byClass["F1"]
+)
+rownames(data_rf) <- "rf"
+data_rf
+
+
+#-----------------------------------------------------------------------
+# 5. 변수 중요도 시각화
+#-----------------------------------------------------------------------
+library(randomForest)
 imp <- importance(fit_rf$finalModel)
 imp_df <- data.frame(
   Variable = rownames(imp),
@@ -221,24 +246,5 @@ ggplot(imp_df, aes(x = reorder(Variable, MeanDecreaseGini),
     legend.position = "none"
   )
 
-#-----------------------------------------------------------------------
-# 4. 랜덤포레스트 결과 요약
-#-----------------------------------------------------------------------
-data_rf <- data.frame(
-  # CV 성능 (resample 이용)
-  CV_Accuracy   = mean(fit_rf$resample$Accuracy),
-  CV_Acc_SD     = sd(fit_rf$resample$Accuracy),
-  CV_Kappa      = mean(fit_rf$resample$Kappa),
-  CV_Kappa_SD   = sd(fit_rf$resample$Kappa),
-  
-  # Test 성능 (confusionMatrix 이용)
-  Test_Accuracy = cm_rf$overall["Accuracy"],
-  Test_Kappa    = cm_rf$overall["Kappa"],
-  Sensitivity   = cm_rf$byClass["Sensitivity"],
-  Specificity   = cm_rf$byClass["Specificity"],
-  Precision     = cm_rf$byClass["Precision"],
-  Balanced_Acc  = cm_rf$byClass["Balanced Accuracy"]
-)
-rownames(data_rf) <- "rf"
-data_rf
+
 
